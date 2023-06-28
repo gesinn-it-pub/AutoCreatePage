@@ -16,7 +16,8 @@
   },
   "Hooks": {
     "ParserFirstCallInit": "main",
-    "RevisionDataUpdates": "main"
+    "RevisionDataUpdates": "main",
+    "SpecialPageAfterExecute": "main"
   },
   "HookHandlers": {
     "main": {
