@@ -28,6 +28,7 @@
     "AutoCreatePageMaxRecursion": 1,
     "AutoCreatePageIgnoreEmptyTitle": false,
     "AutoCreatePageNamespaces": null,
+    "AutoCreatePageOnSpecialPages": [],
     "_prefix": "eg"
   },
   "ExtensionMessagesFiles": {

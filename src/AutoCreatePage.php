@@ -45,8 +45,12 @@ class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook
 	}
 
 	public function onSpecialPageAfterExecute($special, $subPage)  {
-		foreach ( self::$pagesToCreateFromSpecialPages as $pageTitleText => $pageContentText ) {
-			self::createPage( $special->getFullTitle(), $pageTitleText, $pageContentText );
+		global $egAutoCreatePageOnSpecialPages;
+
+		if ( array_search( $special->getName(), $egAutoCreatePageOnSpecialPages ) !== false ) {
+			foreach ( self::$pagesToCreateFromSpecialPages as $pageTitleText => $pageContentText ) {
+				self::createPage( $special->getFullTitle(), $pageTitleText, $pageContentText );
+			}
 		}
 	}
 
