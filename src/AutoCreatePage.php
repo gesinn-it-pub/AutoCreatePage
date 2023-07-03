@@ -40,20 +40,6 @@ class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook
 		$parser->setFunctionHook( 'createPage', [ self::class, 'createPageIfNotExisting' ] );
 	}
 
-	public function onRevisionDataUpdates( $title, $renderedRevision, &$updates ) {
-		return self::doCreatePages( $title, $renderedRevision->getRevisionParserOutput() );
-	}
-
-	public function onSpecialPageAfterExecute($special, $subPage)  {
-		global $egAutoCreatePageOnSpecialPages;
-
-		if ( array_search( $special->getName(), $egAutoCreatePageOnSpecialPages ) !== false ) {
-			foreach ( self::$pagesToCreateFromSpecialPages as $pageTitleText => $pageContentText ) {
-				self::createPage( $special->getFullTitle(), $pageTitleText, $pageContentText );
-			}
-		}
-	}
-
 	/**
 	 * Handles the parser function for creating pages that don't exist yet,
 	 * filling them with the given default content. It is possible to use &lt;nowiki&gt;
@@ -81,44 +67,39 @@ class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook
 			}
 		}
 
-		$requestUrl = $_SERVER['REQUEST_URI'];
-		$isSpecialPage = strpos( $requestUrl, 'Special:' ) !== false || strpos( $requestUrl, 'Spezial:' ) !== false;
-		
-		// Create pages only if the page calling the parser function is within defined namespaces or is a special page
-		if ( !( $isSpecialPage || in_array( $parser->getTitle()->getNamespace(), $autoCreatePageNamespaces ) ) ) {
-			return '';
-		}
-
 		// Get the raw text of $newPageContent as it was before stripping <nowiki>:
 		$newPageContent = $parser->getStripState()->unstripNoWiki( $newPageContent );
 
-		if ( $isSpecialPage ) {
-			// Store data in static variable for later use:
-			self::$pagesToCreateFromSpecialPages[$newPageTitleText] = $newPageContent;
-		} else {
-			// Store data in the parser output for later use:
+		if ( in_array( $parser->getTitle()->getNamespace(), $autoCreatePageNamespaces ) ) {
+			// For pages with namespace in $autoCreatePageNamespaces store data in the parser output 
+			// for later use in onRevisionDataUpdates:s
 			$createPageData = $parser->getOutput()->getExtensionData( 'createPage' );
 			if ( $createPageData === null ) {
 				$createPageData = [];
 			}
 			$createPageData[$newPageTitleText] = $newPageContent;
 			$parser->getOutput()->setExtensionData( 'createPage', $createPageData );
+		} else {
+			// Store data in static variable for possible later use in onSpecialPageAfterExecute:
+			self::$pagesToCreateFromSpecialPages[$newPageTitleText] = $newPageContent;
 		}
 
 		return "";
 	}
 
 	/**
-	 * Creates pages that have been requested by the create page parser function. This is done only
-	 * after the safe is complete to avoid any concurrent article modifications.
+	 * Creates pages that have been requested by the create page parser function for pages with
+	 * namespace in $egAutoCreatePageNamespaces.
+	 * This is done only after the safe is complete to avoid any concurrent article modifications.
 	 * Note that article is, in spite of its name, a WikiPage object since MW 1.21.
 	 * @param Title $sourceTitle
 	 * @param ParserOutput $output
 	 * @return bool
 	 */
-	private static function doCreatePages( $sourceTitle, $output ) {
+	public function onRevisionDataUpdates( $title, $renderedRevision, &$updates ) {
 		global $egAutoCreatePageMaxRecursion;
 
+		$output = $renderedRevision->getRevisionParserOutput();
 		$createPageData = $output->getExtensionData( 'createPage' );
 		if ( $createPageData === null ) {
 			return true; // no pages to create
@@ -128,7 +109,7 @@ class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook
 		$egAutoCreatePageMaxRecursion--;
 
 		foreach ( $createPageData as $pageTitleText => $pageContentText ) {
-			self::createPage($sourceTitle, $pageTitleText, $pageContentText);
+			self::createPage($title, $pageTitleText, $pageContentText);
 		}
 
 		// Reset state. Probably not needed since parsing is usually done here anyway:
@@ -138,6 +119,23 @@ class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook
 		return true;
 	}
 
+	/**
+	 * Creates pages that have been requested on special pages in $egAutoCreatePageOnSpecialPages.
+	 * Note: this probably this does not work too well in more complicated situations like nested
+	 * special pages! 
+	 * One reason is that it is not possible to determine if we are called from a special page 
+	 * (and which) from within a parser function in a clean way.
+	 */
+	public function onSpecialPageAfterExecute( $special, $subPage )  {
+		global $egAutoCreatePageOnSpecialPages;
+
+		if ( array_search( $special->getName(), $egAutoCreatePageOnSpecialPages ) !== false ) {
+			foreach ( self::$pagesToCreateFromSpecialPages as $pageTitleText => $pageContentText ) {
+				self::createPage( $special->getFullTitle(), $pageTitleText, $pageContentText );
+			}
+		}
+	}
+
 	private static function createPage($sourceTitle, $pageTitleText, $pageContentText) {
 		$sourceTitleText = $sourceTitle->getPrefixedText();
 		$pageTitle = Title::newFromText( $pageTitleText );
@@ -145,7 +143,6 @@ class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook
 
 		if ( $pageTitle !== null && !$pageTitle->isKnown() && $pageTitle->canExist() ) {
 			$newWikiPage = new WikiPage( $pageTitle );
-			// TODO: Wieso $sourceTitle? Muss es nicht $pageTitle heißen?
 			$pageContent = ContentHandler::makeContent( $pageContentText, $sourceTitle );
 			$newWikiPage->doEditContent( $pageContent,
 				"Page created automatically by parser function on page [[$sourceTitleText]]" ); // TODO i18n
