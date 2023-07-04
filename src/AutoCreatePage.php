@@ -5,9 +5,9 @@ namespace ACP;
 use ContentHandler;
 use MediaWiki\Hook\ParserFirstCallInitHook;
 use MediaWiki\SpecialPage\Hook\SpecialPageAfterExecuteHook;
+use MediaWiki\SpecialPage\Hook\SpecialPageBeforeExecuteHook;
 use MediaWiki\Storage\Hook\RevisionDataUpdatesHook;
 use Parser;
-use ParserOutput;
 use Title;
 use WikiPage;
 
@@ -32,9 +32,17 @@ use WikiPage;
  * @author Daniel Herzig
  * @file
  */
-class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook, SpecialPageAfterExecuteHook {
+class AutoCreatePage implements
+	ParserFirstCallInitHook,
+	RevisionDataUpdatesHook,
+	SpecialPageBeforeExecuteHook,
+	SpecialPageAfterExecuteHook
+{
 
-	private static $pagesToCreateFromSpecialPages = [];
+	/**
+	 * @var SpecialPage[]
+	 */
+	private static $specialPageStack = [];
 
 	public function onParserFirstCallInit( $parser ) {
 		$parser->setFunctionHook( 'createPage', [ self::class, 'createPageIfNotExisting' ] );
@@ -70,8 +78,12 @@ class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook
 		// Get the raw text of $newPageContent as it was before stripping <nowiki>:
 		$newPageContent = $parser->getStripState()->unstripNoWiki( $newPageContent );
 
-		if ( in_array( $parser->getTitle()->getNamespace(), $autoCreatePageNamespaces ) ) {
-			// For pages with namespace in $autoCreatePageNamespaces store data in the parser output 
+		$enabledSpecialPage = self::enabledSpecialPage();
+		if ( $enabledSpecialPage ) {
+			// Store data in static variable for later use in onSpecialPageAfterExecute:
+			$enabledSpecialPage->addPageToCreate( $newPageTitleText, $newPageContent );
+		} elseif ( in_array( $parser->getTitle()->getNamespace(), $autoCreatePageNamespaces ) ) {
+			// For pages with namespace in $autoCreatePageNamespaces store data in the parser output
 			// for later use in onRevisionDataUpdates:s
 			$createPageData = $parser->getOutput()->getExtensionData( 'createPage' );
 			if ( $createPageData === null ) {
@@ -79,22 +91,16 @@ class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook
 			}
 			$createPageData[$newPageTitleText] = $newPageContent;
 			$parser->getOutput()->setExtensionData( 'createPage', $createPageData );
-		} else {
-			// Store data in static variable for possible later use in onSpecialPageAfterExecute:
-			self::$pagesToCreateFromSpecialPages[$newPageTitleText] = $newPageContent;
 		}
 
 		return "";
 	}
 
 	/**
-	 * Creates pages that have been requested by the create page parser function for pages with
+	 * Create pages that have been requested by the create page parser function for pages with
 	 * namespace in $egAutoCreatePageNamespaces.
 	 * This is done only after the safe is complete to avoid any concurrent article modifications.
 	 * Note that article is, in spite of its name, a WikiPage object since MW 1.21.
-	 * @param Title $sourceTitle
-	 * @param ParserOutput $output
-	 * @return bool
 	 */
 	public function onRevisionDataUpdates( $title, $renderedRevision, &$updates ) {
 		global $egAutoCreatePageMaxRecursion;
@@ -109,7 +115,7 @@ class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook
 		$egAutoCreatePageMaxRecursion--;
 
 		foreach ( $createPageData as $pageTitleText => $pageContentText ) {
-			self::createPage($title, $pageTitleText, $pageContentText);
+			self::createPage( $title, $pageTitleText, $pageContentText );
 		}
 
 		// Reset state. Probably not needed since parsing is usually done here anyway:
@@ -120,23 +126,38 @@ class AutoCreatePage implements ParserFirstCallInitHook, RevisionDataUpdatesHook
 	}
 
 	/**
-	 * Creates pages that have been requested on special pages in $egAutoCreatePageOnSpecialPages.
-	 * Note: this probably this does not work too well in more complicated situations like nested
-	 * special pages! 
-	 * One reason is that it is not possible to determine if we are called from a special page 
-	 * (and which) from within a parser function in a clean way.
+	 * Register special page in static $specialPageStack
 	 */
-	public function onSpecialPageAfterExecute( $special, $subPage )  {
+	public function onSpecialPageBeforeExecute( $special, $subPage ) {
 		global $egAutoCreatePageOnSpecialPages;
 
-		if ( array_search( $special->getName(), $egAutoCreatePageOnSpecialPages ) !== false ) {
-			foreach ( self::$pagesToCreateFromSpecialPages as $pageTitleText => $pageContentText ) {
+		$isEnabled = in_array( $special->getName(), $egAutoCreatePageOnSpecialPages );
+		array_push( self::$specialPageStack, new SpecialPage( $isEnabled ) );
+	}
+
+	/**
+	 * Create pages requested on enabled special pages
+	 */
+	public function onSpecialPageAfterExecute( $special, $subPage ) {
+		$specialPage = array_pop( self::$specialPageStack );
+
+		if ( $specialPage->isEnabled() ) {
+			foreach ( $specialPage->pagesToCreate() as $pageTitleText => $pageContentText ) {
 				self::createPage( $special->getFullTitle(), $pageTitleText, $pageContentText );
 			}
 		}
 	}
 
-	private static function createPage($sourceTitle, $pageTitleText, $pageContentText) {
+	/**
+	 * @return SpecialPage|null the current special page if it is enabled, null otherwise
+	 */
+	private static function enabledSpecialPage() {
+		$count = count( self::$specialPageStack );
+		$currentSpecialPage = $count === 0 ? null : self::$specialPageStack[ $count - 1 ];
+		return $currentSpecialPage !== null && $currentSpecialPage->isEnabled() ? $currentSpecialPage : null;
+	}
+
+	private static function createPage( $sourceTitle, $pageTitleText, $pageContentText ) {
 		$sourceTitleText = $sourceTitle->getPrefixedText();
 		$pageTitle = Title::newFromText( $pageTitleText );
 		// wfDebugLog( 'createpage', "CREATE " . $pageTitle->getText() . " Text: " . $pageContent );
