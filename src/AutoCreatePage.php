@@ -1,15 +1,20 @@
 <?php
 
-namespace ACP;
+declare( strict_types = 1 );
 
-use ContentHandler;
+namespace MediaWiki\Extension\AutoCreatePage;
+
+use CommentStoreComment;
 use MediaWiki\Hook\ParserFirstCallInitHook;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\SlotRecord;
 use MediaWiki\SpecialPage\Hook\SpecialPageAfterExecuteHook;
 use MediaWiki\SpecialPage\Hook\SpecialPageBeforeExecuteHook;
 use MediaWiki\Storage\Hook\RevisionDataUpdatesHook;
+use MediaWiki\User\UserIdentity;
 use Parser;
 use Title;
-use WikiPage;
+use WikitextContent;
 
 /**
  * This extension provides a parser function #createpageifnotex that can be used to create
@@ -42,7 +47,28 @@ class AutoCreatePage implements
 	/**
 	 * @var SpecialPage[]
 	 */
-	private static $specialPageStack = [];
+	private static array $specialPageStack = [];
+
+	/**
+	 * Recursion depth reached so far for a given page, keyed by prefixed DB key. A page not
+	 * present here is at depth 0 (not itself the result of an auto-creation, or unknown).
+	 *
+	 * This tracks the depth of each individual creation chain directly, rather than a single
+	 * shared counter: MediaWiki's RevisionDataUpdates hook for a created page runs via the
+	 * DeferredUpdates queue, i.e. only after the save that created it (and any counter
+	 * decrement/restore surrounding that save) has already completed. A single global counter
+	 * can therefore not reliably observe the depth at the time the created page is itself parsed
+	 * (verified against MW 1.39/1.43: the child's canonical parse - the one that evaluates its
+	 * own #createpageifnotex calls - runs after the parent's onRevisionDataUpdates returns).
+	 *
+	 * Entries are intentionally never removed: a page created earlier in this process must not
+	 * be able to recurse again as if seen for the first time. Per-title entries stay small in
+	 * practice (bounded by the number of auto-created pages, not by every page saved in the
+	 * process).
+	 *
+	 * @var array<string, int>
+	 */
+	private static array $creationDepthByTitle = [];
 
 	public function onParserFirstCallInit( $parser ) {
 		$parser->setFunctionHook( 'createPage', [ self::class, 'createPageIfNotExisting' ] );
@@ -52,75 +78,73 @@ class AutoCreatePage implements
 	 * Handles the parser function for creating pages that don't exist yet,
 	 * filling them with the given default content. It is possible to use &lt;nowiki&gt;
 	 * in the default text parameter to insert verbatim wiki text.
-	 * @param Parser $parser
-	 * @param string $newPageTitleText
-	 * @param string $newPageContent
-	 * @return string
 	 */
-	public static function createPageIfNotExisting( $parser, $newPageTitleText, $newPageContent ) {
+	public static function createPageIfNotExisting(
+		Parser $parser,
+		string $newPageTitleText,
+		string $newPageContent
+	): string {
 		global $egAutoCreatePageMaxRecursion, $egAutoCreatePageIgnoreEmptyTitle,
 			   $egAutoCreatePageNamespaces, $wgContentNamespaces;
 
 		$autoCreatePageNamespaces = $egAutoCreatePageNamespaces ?? $wgContentNamespaces;
 
-		if ( $egAutoCreatePageMaxRecursion <= 0 ) {
+		$currentDepth = self::$creationDepthByTitle[$parser->getTitle()->getPrefixedDBkey()] ?? 0;
+		if ( $currentDepth >= $egAutoCreatePageMaxRecursion ) {
 			return 'Error: Recursion level for auto-created pages exceeded.'; // TODO i18n
 		}
 
-		if ( empty( $newPageTitleText ) ) {
+		if ( $newPageTitleText === '' ) {
 			if ( $egAutoCreatePageIgnoreEmptyTitle === false ) {
 				return 'Error: this function must be given a valid title text for the page to be created.'; // TODO i18n
-			} else {
-				return '';
 			}
+			return '';
 		}
 
 		// Get the raw text of $newPageContent as it was before stripping <nowiki>:
 		$newPageContent = $parser->getStripState()->unstripNoWiki( $newPageContent );
+		$newPageData = [
+			'content' => $newPageContent,
+			'user' => $parser->getUserIdentity(),
+			'depth' => $currentDepth + 1,
+		];
 
 		$enabledSpecialPage = self::enabledSpecialPage();
 		if ( $enabledSpecialPage ) {
 			// Store data in static variable for later use in onSpecialPageAfterExecute:
-			$enabledSpecialPage->addPageToCreate( $newPageTitleText, $newPageContent );
+			$enabledSpecialPage->addPageToCreate( $newPageTitleText, $newPageData );
 		} elseif ( in_array( $parser->getTitle()->getNamespace(), $autoCreatePageNamespaces ) ) {
 			// For pages with namespace in $autoCreatePageNamespaces store data in the parser output
-			// for later use in onRevisionDataUpdates:s
+			// for later use in onRevisionDataUpdates:
 			$createPageData = $parser->getOutput()->getExtensionData( 'createPage' );
 			if ( $createPageData === null ) {
 				$createPageData = [];
 			}
-			$createPageData[$newPageTitleText] = $newPageContent;
+			$createPageData[$newPageTitleText] = $newPageData;
 			$parser->getOutput()->setExtensionData( 'createPage', $createPageData );
 		}
 
-		return "";
+		return '';
 	}
 
 	/**
 	 * Create pages that have been requested by the create page parser function for pages with
 	 * namespace in $egAutoCreatePageNamespaces.
 	 * This is done only after the safe is complete to avoid any concurrent article modifications.
-	 * Note that article is, in spite of its name, a WikiPage object since MW 1.21.
 	 */
 	public function onRevisionDataUpdates( $title, $renderedRevision, &$updates ) {
-		global $egAutoCreatePageMaxRecursion;
-
 		$output = $renderedRevision->getRevisionParserOutput();
 		$createPageData = $output->getExtensionData( 'createPage' );
 		if ( $createPageData === null ) {
 			return true; // no pages to create
 		}
 
-		// Prevent pages to be created by pages that are created to avoid loops:
-		$egAutoCreatePageMaxRecursion--;
-
-		foreach ( $createPageData as $pageTitleText => $pageContentText ) {
-			self::createPage( $title, $pageTitleText, $pageContentText );
+		foreach ( $createPageData as $pageTitleText => $pageContentData ) {
+			self::createPage( $title, $pageTitleText, $pageContentData );
 		}
 
 		// Reset state. Probably not needed since parsing is usually done here anyway:
 		$output->setExtensionData( 'createPage', null );
-		$egAutoCreatePageMaxRecursion++;
 
 		return true;
 	}
@@ -132,7 +156,7 @@ class AutoCreatePage implements
 		global $egAutoCreatePageOnSpecialPages;
 
 		$isEnabled = in_array( $special->getName(), $egAutoCreatePageOnSpecialPages );
-		array_push( self::$specialPageStack, new SpecialPage( $isEnabled ) );
+		self::$specialPageStack[] = new SpecialPage( $isEnabled );
 	}
 
 	/**
@@ -142,8 +166,8 @@ class AutoCreatePage implements
 		$specialPage = array_pop( self::$specialPageStack );
 
 		if ( $specialPage->isEnabled() ) {
-			foreach ( $specialPage->pagesToCreate() as $pageTitleText => $pageContentText ) {
-				self::createPage( $special->getFullTitle(), $pageTitleText, $pageContentText );
+			foreach ( $specialPage->pagesToCreate() as $pageTitleText => $pageContentData ) {
+				self::createPage( $special->getFullTitle(), $pageTitleText, $pageContentData );
 			}
 		}
 	}
@@ -151,23 +175,37 @@ class AutoCreatePage implements
 	/**
 	 * @return SpecialPage|null the current special page if it is enabled, null otherwise
 	 */
-	private static function enabledSpecialPage() {
+	private static function enabledSpecialPage(): ?SpecialPage {
 		$count = count( self::$specialPageStack );
 		$currentSpecialPage = $count === 0 ? null : self::$specialPageStack[ $count - 1 ];
 		return $currentSpecialPage !== null && $currentSpecialPage->isEnabled() ? $currentSpecialPage : null;
 	}
 
-	private static function createPage( $sourceTitle, $pageTitleText, $pageContentText ) {
+	/**
+	 * @param Title $sourceTitle
+	 * @param string $pageTitleText
+	 * @param array{content: string, user: UserIdentity, depth: int} $pageContentData
+	 */
+	private static function createPage(
+		Title $sourceTitle,
+		string $pageTitleText,
+		array $pageContentData
+	): void {
+		$pageContent = new WikitextContent( $pageContentData['content'] );
+		/** @var UserIdentity $author */
+		$author = $pageContentData['user'];
 		$sourceTitleText = $sourceTitle->getPrefixedText();
 		$pageTitle = Title::newFromText( $pageTitleText );
-		// wfDebugLog( 'createpage', "CREATE " . $pageTitle->getText() . " Text: " . $pageContent );
 
 		if ( $pageTitle !== null && !$pageTitle->isKnown() && $pageTitle->canExist() ) {
-			$newWikiPage = new WikiPage( $pageTitle );
-			$pageContent = ContentHandler::makeContent( $pageContentText, $sourceTitle );
-			$newWikiPage->doEditContent( $pageContent,
-				"Page created automatically by parser function on page [[$sourceTitleText]]" ); // TODO i18n
-			// wfDebugLog( 'createpage', "CREATED PAGE " . $pageTitle->getText() . " Text: " . $pageContent );
+			$comment = CommentStoreComment::newUnsavedComment(
+				"Page created automatically by parser function on page [[$sourceTitleText]]" // TODO i18n
+			);
+			self::$creationDepthByTitle[$pageTitle->getPrefixedDBkey()] = $pageContentData['depth'];
+			$wikiPage = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $pageTitle );
+			$updater = $wikiPage->newPageUpdater( $author );
+			$updater->setContent( SlotRecord::MAIN, $pageContent );
+			$updater->saveRevision( $comment );
 		}
 	}
 }

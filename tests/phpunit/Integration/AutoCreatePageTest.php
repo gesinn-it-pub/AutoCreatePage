@@ -1,6 +1,8 @@
 <?php
 
-namespace ACP\Tests\Integration;
+declare( strict_types = 1 );
+
+namespace MediaWiki\Extension\AutoCreatePage\Tests\Integration;
 
 use FauxRequest;
 use MediaWiki\MediaWikiServices;
@@ -10,13 +12,13 @@ use Title;
 use WikiPage;
 
 /**
- * @covers \ACP\AutoCreatePage
+ * @covers \MediaWiki\Extension\AutoCreatePage\AutoCreatePage
  * @group Database
  */
 class AutoCreatePageTest extends MediaWikiIntegrationTestCase {
 
 	private const EXPECTED_TEXT = 'expected text';
-	private static $defaultAutoCreatePageMaxRecursion;
+	private static int $defaultAutoCreatePageMaxRecursion;
 
 	public static function setUpBeforeClass(): void {
 		parent::setUpBeforeClass();
@@ -36,7 +38,7 @@ class AutoCreatePageTest extends MediaWikiIntegrationTestCase {
 		$egAutoCreatePageOnSpecialPages = [];
 	}
 
-	public function testCreatesPage() {
+	public function testCreatesPage(): void {
 		[ $x, $y ] = $this->randomize( [ 'x', 'y' ] );
 		$this->insertPage( $x, "{{#createpageifnotex:$y|" . self::EXPECTED_TEXT . "}}" );
 
@@ -47,7 +49,7 @@ class AutoCreatePageTest extends MediaWikiIntegrationTestCase {
 		$this->assertEquals( "{{#createpageifnotex:$y|" . self::EXPECTED_TEXT . "}}", $text );
 	}
 
-	public function testOnlyCreatesPageIfItDoesntExist() {
+	public function testOnlyCreatesPageIfItDoesntExist(): void {
 		[ $x, $y ] = self::randomize( [ 'x', 'y' ] );
 		$this->insertPage( $y, self::EXPECTED_TEXT );
 		$this->insertPage( $x, "{{#createpageifnotex:$y|other text}}" );
@@ -57,7 +59,7 @@ class AutoCreatePageTest extends MediaWikiIntegrationTestCase {
 		$this->assertEquals( self::EXPECTED_TEXT, $text );
 	}
 
-	public function testIgnoresRequestToCreateCurrentPage() {
+	public function testIgnoresRequestToCreateCurrentPage(): void {
 		[ $x ] = self::randomize( [ 'x' ] );
 		$this->insertPage( $x, "{{#createpageifnotex:$x|x}}" );
 
@@ -66,7 +68,7 @@ class AutoCreatePageTest extends MediaWikiIntegrationTestCase {
 		$this->assertEquals( "{{#createpageifnotex:$x|x}}", $text );
 	}
 
-	public function testDoesntRecurseByDefault() {
+	public function testDoesntRecurseByDefault(): void {
 		[ $x1, $x2, $x3 ] = self::randomize( [ 'x1', 'x2', 'x3' ] );
 		$this->insertPage( $x1,
 			"{{#createpageifnotex:$x2|<nowiki>{{#createpageifnotex:$x3|" . self::EXPECTED_TEXT .
@@ -79,7 +81,7 @@ class AutoCreatePageTest extends MediaWikiIntegrationTestCase {
 		$this->assertNull( $text3 );
 	}
 
-	public function testRecursesIfToldSo() {
+	public function testRecursesIfToldSo(): void {
 		global $egAutoCreatePageMaxRecursion;
 		$egAutoCreatePageMaxRecursion = 2;
 
@@ -95,13 +97,30 @@ class AutoCreatePageTest extends MediaWikiIntegrationTestCase {
 		$this->assertEquals( self::EXPECTED_TEXT, $text3 );
 	}
 
-	public function testIsNotCalledFromUnenabledSpecialPage() {
-		$page = $page = self::createOnSpecialExpandTemplates( 'NotCreated' );
+	public function testRecursionBudgetIsRestoredAfterEachTopLevelSave(): void {
+		global $egAutoCreatePageMaxRecursion;
+		$egAutoCreatePageMaxRecursion = 1;
+
+		[ $a1, $a2, $b1, $b2 ] = self::randomize( [ 'a1', 'a2', 'b1', 'b2' ] );
+
+		// First, unrelated save that uses up the recursion depth of 1.
+		$this->insertPage( $a1, "{{#createpageifnotex:$a2|" . self::EXPECTED_TEXT . "}}" );
+		$this->assertEquals( self::EXPECTED_TEXT, $this->textOf( $a2 ) );
+
+		// A second, independent top-level save must still be able to recurse to depth 1 -
+		// the max recursion setting is a per-save depth limit, not a process-wide budget
+		// that gets exhausted by earlier, unrelated saves.
+		$this->insertPage( $b1, "{{#createpageifnotex:$b2|" . self::EXPECTED_TEXT . "}}" );
+		$this->assertEquals( self::EXPECTED_TEXT, $this->textOf( $b2 ) );
+	}
+
+	public function testIsNotCalledFromUnenabledSpecialPage(): void {
+		$page = self::createOnSpecialExpandTemplates( 'NotCreated' );
 
 		$this->assertFalse( $page->exists() );
 	}
 
-	public function testIsCalledFromEnabledSpecialPage() {
+	public function testIsCalledFromEnabledSpecialPage(): void {
 		global $egAutoCreatePageOnSpecialPages;
 		$egAutoCreatePageOnSpecialPages = [ 'ExpandTemplates' ];
 
@@ -110,7 +129,7 @@ class AutoCreatePageTest extends MediaWikiIntegrationTestCase {
 		$this->assertTrue( $page->exists() );
 	}
 
-	private static function createOnSpecialExpandTemplates( $title ) {
+	private static function createOnSpecialExpandTemplates( string $title ): WikiPage {
 		$ctx = new RequestContext();
 		$ctx->setRequest( new FauxRequest( [
 			'wpContextTitle' => 'X',
@@ -119,17 +138,21 @@ class AutoCreatePageTest extends MediaWikiIntegrationTestCase {
 		$sp = Title::makeTitle( NS_SPECIAL, 'ExpandTemplates' );
 		MediaWikiServices::getInstance()->getSpecialPageFactory()->executePath( $sp, $ctx );
 
-		return WikiPage::factory( Title::newFromText( $title ) );
+		return MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( Title::newFromText( $title ) );
 	}
 
-	private function textOf( $title ) {
-		$page = WikiPage::factory( Title::newFromText( $title ) );
+	private function textOf( string $title ): ?string {
+		$page = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( Title::newFromText( $title ) );
 
 		return $page->exists() ? $page->getContent()->getText() : null;
 	}
 
-	private static function randomize( $titles ) {
-		return array_map( static function ( $t ) {
+	/**
+	 * @param string[] $titles
+	 * @return string[]
+	 */
+	private static function randomize( array $titles ): array {
+		return array_map( static function ( string $t ): string {
 			return $t . '-' . mt_rand();
 		}, $titles );
 	}

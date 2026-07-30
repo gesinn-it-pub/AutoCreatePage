@@ -1,25 +1,35 @@
 <?php
 
-namespace ACP;
+declare( strict_types = 1 );
+
+namespace MediaWiki\Extension\AutoCreatePage;
 
 class SpecialPage {
 
-	private $isEnabled;
-	private $pagesToCreate = [];
+	/**
+	 * @var array<string, array{content: string, user: \MediaWiki\User\UserIdentity, depth: int}>
+	 */
+	private array $pagesToCreate = [];
 
-	public function __construct( $isEnabled ) {
-		$this->isEnabled = $isEnabled;
+	public function __construct( private readonly bool $isEnabled ) {
 	}
 
-	public function isEnabled() {
+	public function isEnabled(): bool {
 		return $this->isEnabled;
 	}
 
-	public function addPageToCreate( $titleText, $content ) {
-		$this->pagesToCreate[$titleText] = $content;
+	/**
+	 * @param string $titleText
+	 * @param array{content: string, user: \MediaWiki\User\UserIdentity, depth: int} $data
+	 */
+	public function addPageToCreate( string $titleText, array $data ): void {
+		$this->pagesToCreate[$titleText] = $data;
 	}
 
-	public function pagesToCreate() {
+	/**
+	 * @return array<string, array{content: string, user: \MediaWiki\User\UserIdentity, depth: int}>
+	 */
+	public function pagesToCreate(): array {
 		return $this->pagesToCreate;
 	}
 }
