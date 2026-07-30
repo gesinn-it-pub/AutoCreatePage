@@ -1,0 +1,8 @@
+{
+	"@metadata": {
+		"authors": []
+	},
+	"autocreatepage-recursion-exceeded": "Error: Recursion level for auto-created pages exceeded.",
+	"autocreatepage-empty-title": "Error: this function must be given a valid title text for the page to be created.",
+	"autocreatepage-edit-comment": "Page created automatically by parser function on page [[$1]]"
+}

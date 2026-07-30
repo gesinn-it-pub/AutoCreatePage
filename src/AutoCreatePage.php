@@ -91,12 +91,12 @@ class AutoCreatePage implements
 
 		$currentDepth = self::$creationDepthByTitle[$parser->getTitle()->getPrefixedDBkey()] ?? 0;
 		if ( $currentDepth >= $egAutoCreatePageMaxRecursion ) {
-			return 'Error: Recursion level for auto-created pages exceeded.'; // TODO i18n
+			return wfMessage( 'autocreatepage-recursion-exceeded' )->inContentLanguage()->text();
 		}
 
 		if ( $newPageTitleText === '' ) {
 			if ( $egAutoCreatePageIgnoreEmptyTitle === false ) {
-				return 'Error: this function must be given a valid title text for the page to be created.'; // TODO i18n
+				return wfMessage( 'autocreatepage-empty-title' )->inContentLanguage()->text();
 			}
 			return '';
 		}
@@ -199,7 +199,7 @@ class AutoCreatePage implements
 
 		if ( $pageTitle !== null && !$pageTitle->isKnown() && $pageTitle->canExist() ) {
 			$comment = CommentStoreComment::newUnsavedComment(
-				"Page created automatically by parser function on page [[$sourceTitleText]]" // TODO i18n
+				wfMessage( 'autocreatepage-edit-comment', $sourceTitleText )->inContentLanguage()->text()
 			);
 			self::$creationDepthByTitle[$pageTitle->getPrefixedDBkey()] = $pageContentData['depth'];
 			$wikiPage = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $pageTitle );

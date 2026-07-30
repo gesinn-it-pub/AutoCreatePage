@@ -7,6 +7,7 @@ namespace MediaWiki\Extension\AutoCreatePage\Tests\Integration;
 use FauxRequest;
 use MediaWiki\MediaWikiServices;
 use MediaWikiIntegrationTestCase;
+use ParserOptions;
 use RequestContext;
 use Title;
 use WikiPage;
@@ -112,6 +113,35 @@ class AutoCreatePageTest extends MediaWikiIntegrationTestCase {
 		// that gets exhausted by earlier, unrelated saves.
 		$this->insertPage( $b1, "{{#createpageifnotex:$b2|" . self::EXPECTED_TEXT . "}}" );
 		$this->assertEquals( self::EXPECTED_TEXT, $this->textOf( $b2 ) );
+	}
+
+	public function testReturnsLocalizedErrorWhenRecursionLevelExceeded(): void {
+		$this->setContentLang( 'qqx' );
+		global $egAutoCreatePageMaxRecursion;
+		$egAutoCreatePageMaxRecursion = 0;
+
+		[ $x, $y ] = self::randomize( [ 'x', 'y' ] );
+		$html = $this->parse( "{{#createpageifnotex:$y|" . self::EXPECTED_TEXT . '}}' );
+
+		$this->assertStringContainsString( '(autocreatepage-recursion-exceeded)', $html );
+	}
+
+	public function testReturnsLocalizedErrorWhenTitleIsEmpty(): void {
+		$this->setContentLang( 'qqx' );
+
+		$html = $this->parse( '{{#createpageifnotex:|' . self::EXPECTED_TEXT . '}}' );
+
+		$this->assertStringContainsString( '(autocreatepage-empty-title)', $html );
+	}
+
+	private function parse( string $wikitext ): string {
+		$parserOutput = $this->getServiceContainer()->getParser()->parse(
+			$wikitext,
+			Title::makeTitle( NS_MAIN, 'Test' ),
+			ParserOptions::newFromAnon()
+		);
+
+		return $parserOutput->getRawText();
 	}
 
 	public function testIsNotCalledFromUnenabledSpecialPage(): void {

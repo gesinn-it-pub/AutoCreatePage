@@ -1,0 +1,8 @@
+{
+	"@metadata": {
+		"authors": []
+	},
+	"autocreatepage-recursion-exceeded": "Error message shown in place of the parser function output when the configured recursion depth ($egAutoCreatePageMaxRecursion) has been exceeded.",
+	"autocreatepage-empty-title": "Error message shown in place of the parser function output when no title was given and $egAutoCreatePageIgnoreEmptyTitle is false.",
+	"autocreatepage-edit-comment": "Edit summary used for pages created by the extension. Parameters:\n* $1 - the prefixed title of the page that triggered the creation, wrapped in wikilink syntax by the caller"
+}

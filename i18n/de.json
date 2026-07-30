@@ -1,0 +1,8 @@
+{
+	"@metadata": {
+		"authors": []
+	},
+	"autocreatepage-recursion-exceeded": "Fehler: Die maximale Rekursionstiefe für automatisch erstellte Seiten wurde überschritten.",
+	"autocreatepage-empty-title": "Fehler: Diese Funktion benötigt einen gültigen Seitentitel für die zu erstellende Seite.",
+	"autocreatepage-edit-comment": "Seite automatisch erstellt durch Parserfunktion auf Seite [[$1]]"
+}

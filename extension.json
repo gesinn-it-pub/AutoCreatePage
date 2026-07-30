@@ -35,5 +35,10 @@
   "ExtensionMessagesFiles": {
     "AutoCreatePageMagic": "AutoCreatePage.i18n.magic.php"
   },
+  "MessagesDirs": {
+    "AutoCreatePage": [
+      "i18n"
+    ]
+  },
   "manifest_version": 1
 }

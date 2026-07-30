@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/) and
 
 ## [Unreleased]
 
+### Added
+- Add English and German localization for error messages and edit summaries, replacing hardcoded English strings
+
 ### Breaking Changes
 - Change PHP namespace from `ACP\` to `MediaWiki\Extension\AutoCreatePage\` [`857c148`](https://github.com/gesinn-it-pub/AutoCreatePage/commit/857c148)
 - Raise minimum required MediaWiki version from 1.35 to 1.39 [`857c148`](https://github.com/gesinn-it-pub/AutoCreatePage/commit/857c148)

@@ -81,14 +81,6 @@ Example:
 $egAutoCreatePageNamespaces = [ NS_MAIN, NS_USER, NS_CUSTOM ];
 ```
 
-Status
-------
-
-This code is experimental. Use with care. Internationalization is largely missing.
-
-As of MediaWiki 1.39, the code avoids deprecated functions or hooks.
-
-
 Credits
 -------
 
