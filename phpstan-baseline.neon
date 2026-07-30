@@ -1,6 +1,0 @@
-parameters:
-	ignoreErrors:
-		-
-			message: "#^Call to an undefined method Content\\:\\:getText\\(\\)\\.$#"
-			count: 1
-			path: tests/phpunit/Integration/AutoCreatePageTest.php
