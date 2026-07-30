@@ -1,51 +1,44 @@
-EXTENSION := AutoCreatePage
+-include .env
+export
 
-MW_VERSION ?= 1.35
+# setup for docker-compose-ci build directory
+# delete "build" directory to update docker-compose-ci
 
-EXTENSION_FOLDER := /var/www/html/extensions/$(EXTENSION)
-IMAGE_NAME := $(shell echo $(EXTENSION) | tr A-Z a-z}):test-$(MW_VERSION)
-PWD := $(shell bash -c "pwd -W 2>/dev/null || pwd")# this way it works on Windows and Linux
-DOCKER_RUN_ARGS := --rm -v $(PWD)/coverage:$(EXTENSION_FOLDER)/coverage -w $(EXTENSION_FOLDER) $(IMAGE_NAME)
-docker_run := docker run $(DOCKER_RUN_ARGS)
+ifeq (,$(wildcard ./build/))
+    $(shell git submodule update --init --remote)
+endif
 
-.PHONY: all
-all:
+EXTENSION=AutoCreatePage
 
-# ======== CI ========
+# docker images
+MW_VERSION?=1.43
+PHP_VERSION?=8.3
+DB_TYPE?=sqlite
 
-.PHONY: ci
-ci: build test
+# composer
+# Enables "composer update" inside of extension
+COMPOSER_EXT?=true
 
-.PHONY: ci-coverage
-ci-coverage: build test-coverage
+include build/Makefile
 
-.PHONY: build
-build:
-	docker build --tag $(IMAGE_NAME) \
-		--build-arg=MW_VERSION=$(MW_VERSION) \
-		.
+# PHP development cycle: lint (full) + phpunit
+# Optional:
+#   FILTER=AutoCreatePageTest   restricts phpunit via --filter
+.PHONY: php-test
+php-test: .init
+ifdef COMPOSER_EXT
+	$(show-current-target)
+	$(compose-exec-wiki) bash -c "cd $(EXTENSION_FOLDER) && composer lint"
+	$(compose-exec-wiki) bash -c "cd $(EXTENSION_FOLDER) && composer phpunit$(if $(FILTER), -- --filter $(FILTER),)"
+endif
 
-.PHONY: test
-test: composer-test
-
-.PHONY: test-coverage
-test-coverage: composer-test-coverage
-
-.PHONY: composer-test
-composer-test:
-	$(docker_run) composer test
-
-.PHONY: composer-test-coverage
-composer-test-coverage:
-	$(docker_run) composer test-coverage
-
-.PHONY: bash
-bash:
-	docker run -it -v $(PWD):/src $(DOCKER_RUN_ARGS) bash
-
-.PHONY: dev-bash
-dev-bash:
-	docker run -it --rm -p 8080:8080 \
-		-v $(PWD):$(EXTENSION_FOLDER) \
-		-v $(EXTENSION_FOLDER)/vendor/  \
-		-w $(EXTENSION_FOLDER) $(IMAGE_NAME) bash -c 'service apache2 start && bash'
+# Full development cycle without reinstalling: lint + phpcs + phpunit
+# Equivalent to 'make ci' but skips 'make install'. Run before committing.
+.PHONY: dev-test
+dev-test: .init
+ifdef COMPOSER_EXT
+	$(show-current-target)
+	$(compose-exec-wiki) bash -c "cd $(EXTENSION_FOLDER) && composer lint"
+	$(compose-exec-wiki) bash -c "cd $(EXTENSION_FOLDER) && composer phpcs"
+	$(compose-exec-wiki) bash -c "cd $(EXTENSION_FOLDER) && composer phpunit"
+endif

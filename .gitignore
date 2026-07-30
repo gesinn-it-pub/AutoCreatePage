@@ -2,3 +2,5 @@ vendor
 coverage
 .phpunit.result.cache
 .vscode
+.env
+build/docker-compose.override.yml

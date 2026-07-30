@@ -9,24 +9,44 @@ on:
 
 jobs:
 
-  ci:
+  test:
 
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
+    # TODO: drop once AutoCreatePage is fixed for MW >= 1.39 (WikiPage::doEditContent()
+    # removed, core classes moved into MediaWiki\... namespaces — see phpstan failures)
     continue-on-error: ${{ matrix.experimental }}
 
     strategy:
       matrix:
         include:
-          - mediawiki_version: '1.35'
-            experimental: false
-          - mediawiki_version: '1.36'
+          - mw: "1.39"
+            php: "8.1"
             experimental: true
-          - mediawiki_version: '1.37'
+          - mw: "1.43"
+            php: "8.3"
+            coverage: true
             experimental: true
-
-    env:
-      MW_VERSION: ${{ matrix.mediawiki_version }}
 
     steps:
-      - uses: actions/checkout@v3
-      - run: make ci
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run CI
+        run: >
+          make ci
+          MW_VERSION=${{ matrix.mw }}
+          PHP_VERSION=${{ matrix.php }}
+
+      - name: Run coverage
+        if: ${{ matrix.coverage }}
+        run: >
+          make ci-coverage
+          MW_VERSION=${{ matrix.mw }}
+          PHP_VERSION=${{ matrix.php }}
+
+      - name: Upload coverage
+        if: ${{ matrix.coverage }}
+        uses: codecov/codecov-action@v4
+        with:
+          files: build/coverage/php/coverage.xml
