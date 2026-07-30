@@ -1,6 +1,9 @@
 AutoCreatePage
 ==============
 
+[![CI](https://github.com/gesinn-it-pub/AutoCreatePage/actions/workflows/ci.yml/badge.svg)](https://github.com/gesinn-it-pub/AutoCreatePage/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/gesinn-it-pub/AutoCreatePage/branch/master/graph/badge.svg)](https://app.codecov.io/gh/gesinn-it-pub/AutoCreatePage)
+
 MediaWiki extension to automatically create pages with a parser function.
 
 The purpose of this is that wiki pages, especially pages that use templates,
