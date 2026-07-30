@@ -6,8 +6,15 @@ This project adheres to [Semantic Versioning](https://semver.org/) and
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-30
+
+First stable, semantically versioned release. Migrates the extension to the
+modern MediaWiki extension registration namespace and non-deprecated APIs,
+raises the minimum supported MediaWiki version to 1.39, and adds English and
+German localization.
+
 ### Added
-- Add English and German localization for error messages and edit summaries, replacing hardcoded English strings
+- Add English and German localization for error messages and edit summaries, replacing hardcoded English strings [`53e68d8`](https://github.com/gesinn-it-pub/AutoCreatePage/commit/53e68d8)
 
 ### Breaking Changes
 - Change PHP namespace from `ACP\` to `MediaWiki\Extension\AutoCreatePage\` [`857c148`](https://github.com/gesinn-it-pub/AutoCreatePage/commit/857c148)
@@ -24,4 +31,5 @@ This project adheres to [Semantic Versioning](https://semver.org/) and
   permanently exhausted by unrelated, non-nested page saves in the same
   process [`857c148`](https://github.com/gesinn-it-pub/AutoCreatePage/commit/857c148)
 
-[Unreleased]: https://github.com/gesinn-it-pub/AutoCreatePage/compare/master...HEAD
+[Unreleased]: https://github.com/gesinn-it-pub/AutoCreatePage/compare/1.0.0...HEAD
+[1.0.0]: https://github.com/gesinn-it-pub/AutoCreatePage/releases/tag/1.0.0
