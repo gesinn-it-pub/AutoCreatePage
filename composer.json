@@ -20,7 +20,10 @@
 		"lint": "parallel-lint . --exclude vendor",
 		"phpcs": "phpcs -p -s .",
 		"phpcs-fix": "phpcbf .",
-		"phpunit": "php ../../tests/phpunit/phpunit.php -c phpunit.xml.dist --testdox",
-		"phpunit-coverage": "php ../../tests/phpunit/phpunit.php -c phpunit.xml.dist --testdox --coverage-text --coverage-html coverage/php --coverage-clover coverage/php/coverage.xml"
+		"phpunit": [
+			"Composer\\Config::disableProcessTimeout",
+			"bash -c 'cd ${MW_INSTALL_PATH:-../..} && { [ -f tests/phpunit/generatePHPUnitConfig.php ] && { php tests/phpunit/generatePHPUnitConfig.php >/dev/null 2>&1 || true; [ -f phpunit.xml ] || printf \"%s\" \"<phpunit><!-- generatePHPUnitConfig --></phpunit>\" > phpunit.xml; } || true; } && MEDIAWIKI_HAS_INTEGRATION_TESTS=1 vendor/bin/phpunit -c extensions/AutoCreatePage/phpunit.xml.dist --bootstrap tests/phpunit/bootstrap.php --testdox'"
+		],
+		"phpunit-coverage": "@phpunit --coverage-text --coverage-html extensions/AutoCreatePage/coverage/php --coverage-clover extensions/AutoCreatePage/coverage/php/coverage.xml"
 	}
 }
