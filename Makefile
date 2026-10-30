@@ -19,6 +19,9 @@ DB_TYPE?=sqlite
 # Enables "composer update" inside of extension
 COMPOSER_EXT?=true
 
+# coverage: PCOV is several times faster than Xdebug (line coverage only)
+COVERAGE_DRIVER?=pcov
+
 include build/Makefile
 
 # PHP development cycle: lint (full) + phpunit
